@@ -271,21 +271,29 @@ async function executeAction(
         try {
           await locator.waitFor({ state: "visible", timeout });
         } catch {
-          // Fallback: try relaxed selector (role without name constraint)
+          // Fallback 1: For text-based selectors, check if the text exists on the page
+          const waitText = extractTextFromSelector(action.selector);
+          if (waitText) {
+            const bodyText = await page.locator("body").textContent().catch(() => "");
+            if (bodyText?.includes(waitText)) break;
+          }
+
+          // Fallback 2: Try relaxed selector (role without name constraint)
           const relaxed = tryRelaxedLocator(page, action.selector);
           if (relaxed) {
-            try {
-              await relaxed.waitFor({ state: "visible", timeout });
-              break;
-            } catch {
-              // Try attached state as last resort
-              const attached = await relaxed.count().catch(() => 0);
-              if (attached > 0) break;
-            }
+            const relaxedVisible = await relaxed.isVisible().catch(() => false);
+            if (relaxedVisible) break;
+            const box = await relaxed.boundingBox().catch(() => null);
+            if (box && box.width > 0 && box.height > 0) break;
           }
-          // Try attached state on original locator
+
+          // Fallback 3: Check if element exists in DOM with bounding box
           const count = await locator.count().catch(() => 0);
-          if (count > 0) break;
+          if (count > 0) {
+            const box = await locator.boundingBox().catch(() => null);
+            if (box && box.width > 0 && box.height > 0) break;
+          }
+
           throw new Error(`Wait failed — element not found: ${action.selector}`);
         }
       } else {
@@ -315,13 +323,9 @@ async function executeAction(
         if (action.value) {
           const text = await locator.textContent({ timeout });
           if (!text?.includes(action.value)) {
-            // Fallback: check if the value exists anywhere visible on the page
-            const exists = await page
-              .getByText(action.value, { exact: false })
-              .first()
-              .isVisible()
-              .catch(() => false);
-            if (!exists) {
+            // Fallback: check if the value exists anywhere on the page
+            const bodyText = await page.locator("body").textContent().catch(() => "");
+            if (!bodyText?.includes(action.value)) {
               throw new Error(
                 `Expected text "${action.value}" but got "${text?.slice(0, 100)}"`
               );
@@ -331,14 +335,11 @@ async function executeAction(
         break;
       }
 
-      // Fallback 1: If we have text to search for, look for it anywhere visible on the page
+      // Fallback 1: If we have text to search for, look for it in visible elements
       if (searchText) {
-        const textVisible = await page
-          .getByText(searchText, { exact: false })
-          .first()
-          .isVisible()
-          .catch(() => false);
-        if (textVisible) break;
+        // Check body text content first (most reliable)
+        const bodyText = await page.locator("body").textContent().catch(() => "");
+        if (bodyText?.includes(searchText)) break;
       }
 
       // Fallback 2: Try relaxed selector (e.g., role without name constraint)
@@ -356,12 +357,6 @@ async function executeAction(
       if (isAttached > 0) {
         const box = await locator.boundingBox().catch(() => null);
         if (box && box.width > 0 && box.height > 0) break;
-      }
-
-      // Fallback 3: Check the whole page body for the search text
-      if (searchText) {
-        const bodyText = await page.locator("body").textContent().catch(() => "");
-        if (bodyText?.includes(searchText)) break;
       }
 
       throw new Error(
@@ -423,6 +418,22 @@ function resolveLocator(page: Page, selector: string) {
   const getByTextRegex = selector.match(/^getByText\(\/(.+?)\/([gimsuy]*)\)$/);
   if (getByTextRegex) {
     return page.getByText(new RegExp(getByTextRegex[1], getByTextRegex[2])).first();
+  }
+
+  // Playwright getByText shorthand with string: 'getByText("text")' or "getByText('text')"
+  const getByTextString = selector.match(/^getByText\(['"](.+?)['"]\)$/);
+  if (getByTextString) {
+    return page.getByText(getByTextString[1]).first();
+  }
+
+  // CSS prefix: 'css=...'
+  if (selector.startsWith("css=")) {
+    return page.locator(selector.slice(4)).first();
+  }
+
+  // XPath: '//...'
+  if (selector.startsWith("//")) {
+    return page.locator(`xpath=${selector}`).first();
   }
 
   // Placeholder-based: 'placeholder=...'
