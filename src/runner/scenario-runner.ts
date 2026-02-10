@@ -1,7 +1,7 @@
 import { resolve } from "path";
 import { loadAllScenarios } from "../scenarios/loader.js";
 import { translateScenario } from "./translator.js";
-import { executeScenario, ensureBrowser, closeBrowser } from "./executor.js";
+import { executeScenario, ensureBrowser, closeBrowser, getPageSnapshot } from "./executor.js";
 import { log, spinner } from "../utils/logger.js";
 import type { Scenario, VerificationResult, VerificationSummary } from "../scenarios/types.js";
 import type { ResolvedConfig } from "../config/schema.js";
@@ -75,13 +75,23 @@ export async function runAllScenarios(
 
   log.heading("Running scenarios\n");
 
+  // Capture a page snapshot for DOM-aware translation
+  let pageSnapshot: string | undefined;
+  try {
+    const s2 = spinner("Capturing page snapshot for translation...");
+    pageSnapshot = await getPageSnapshot(config.baseUrl, options.headed);
+    s2.succeed("Page snapshot captured");
+  } catch {
+    log.warn("Could not capture page snapshot — translating without DOM context");
+  }
+
   for (let i = 0; i < scenarios.length; i++) {
     const scenario = scenarios[i];
     const prefix = `[${i + 1}/${scenarios.length}]`;
 
     try {
       // Translate scenario to Playwright actions
-      const actions = await translateScenario(scenario, config.baseUrl, model);
+      const actions = await translateScenario(scenario, config.baseUrl, model, pageSnapshot);
 
       // Execute the actions
       const result = await executeScenario(scenario, actions, {

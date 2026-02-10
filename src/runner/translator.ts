@@ -10,7 +10,7 @@ export interface PlaywrightAction {
   description: string;
 }
 
-const TRANSLATION_SYSTEM = `You are a Playwright test translator. Given a behavioral scenario written in natural language and the current page's content, output a JSON array of Playwright actions.
+const TRANSLATION_SYSTEM = `You are a Playwright test translator. Given a behavioral scenario written in natural language, output a JSON array of Playwright actions.
 
 Each action must be one of these types:
 
@@ -18,6 +18,7 @@ Each action must be one of these types:
 - click: Click an element. { "type": "click", "selector": "role/text selector", "description": "..." }
 - fill: Type into an input. { "type": "fill", "selector": "role/text selector", "value": "text to type", "description": "..." }
 - select: Select from a dropdown. { "type": "select", "selector": "role/text selector", "value": "option", "description": "..." }
+  For custom dropdowns (button + options, not native <select>), use TWO actions: a click on the trigger button, then a click on the option text.
 - wait: Wait for something. { "type": "wait", "selector": "role/text selector or timeout", "description": "..." }
 - assert: Verify something is visible/correct. { "type": "assert", "selector": "role/text selector", "value": "expected text (optional)", "description": "..." }
 - keyboard: Press a key. { "type": "keyboard", "key": "Enter", "description": "..." }
@@ -29,6 +30,13 @@ For selectors, prefer accessible selectors that Playwright supports:
 - getByLabel: 'label=Email address'
 - CSS as last resort: '.class-name', '#id'
 
+IMPORTANT rules:
+- When asserting text exists, use selectors that target VISIBLE elements only. Avoid matching hidden elements like SVG <title> tags.
+- For table content assertions, prefer targeting table cells (td, th) or rows (tr) rather than broad text searches.
+- If a page snapshot is provided, use it to choose selectors that match the ACTUAL DOM structure.
+- For custom dropdowns/filters (button + role="option" divs), do NOT use "select" type. Instead use "click" on the trigger, then "click" on the option.
+- For native <select> elements, use the "select" type.
+
 Return ONLY a JSON array of actions. No other text.`;
 
 /**
@@ -37,8 +45,13 @@ Return ONLY a JSON array of actions. No other text.`;
 export async function translateScenario(
   scenario: Scenario,
   baseUrl: string,
-  model?: string
+  model?: string,
+  pageSnapshot?: string
 ): Promise<PlaywrightAction[]> {
+  const snapshotSection = pageSnapshot
+    ? `\n## Page Structure (actual DOM snapshot)\n\`\`\`\n${pageSnapshot}\n\`\`\`\n\nUse this snapshot to choose selectors that match the real page structure. Prefer targeting visible text content in semantic elements (headings, table cells, buttons, labels) rather than SVG internals or hidden elements.\n`
+    : "";
+
   const prompt = `## Scenario: ${scenario.name}
 
 ## Context (preconditions)
@@ -51,7 +64,7 @@ ${scenario.steps.map((s, i) => `${i + 1}. ${s}`).join("\n")}
 ${scenario.expected.map((e) => `- ${e}`).join("\n")}
 
 ## Base URL: ${baseUrl}
-
+${snapshotSection}
 Translate ALL steps AND expected outcomes into Playwright actions. Start by navigating to the appropriate page. End with assert actions for each expected outcome. Return ONLY the JSON array.`;
 
   const response = await chat(
