@@ -1,0 +1,33 @@
+{
+  "name": "litmus",
+  "version": "0.1.0",
+  "description": "Generate exhaustive behavioral scenarios from conversation and iterate until they all pass",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "litmus": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": ["testing", "scenarios", "ai", "playwright", "specification"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "gray-matter": "^4.0.3",
+    "ora": "^8.2.0",
+    "playwright": "^1.50.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3",
+    "@types/node": "^22.13.1"
+  }
+}
