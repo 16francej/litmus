@@ -115,13 +115,13 @@ async function invokeClaude(
         "-p",
         prompt,
         "--allowedTools",
-        "Read,Write,Edit,Bash(npm install:*),Bash(npx:*),Bash(cat:*),Bash(ls:*),Glob,Grep",
+        "Read,Write,Edit,Bash(npm install:*),Bash(npx:*),Bash(node:*),Bash(npm run:*),Bash(cat:*),Bash(ls:*),Glob,Grep",
         "--output-format",
         "text",
       ],
       {
         cwd,
-        env: { ...process.env },
+        env: { ...process.env, CLAUDECODE: "" },
         stdio: ["ignore", "pipe", "pipe"],
       }
     );
